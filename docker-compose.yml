@@ -1,0 +1,169 @@
+version: '3.8'
+
+configs:
+  #
+  # Reverse Proxy Configs
+  #
+  WebConfig:
+    name: WebConfig-1
+    file: ./Configs/Web/Caddyfile.json
+
+  WebIntConfig:
+    name: WebIntConfig-3
+    file: ./Configs/WebInt/Caddyfile.json
+
+  #
+  # Prometheus Config
+  #
+  PrometheusCoreConfig:
+    name: PrometheusCoreConfig-7
+    file: ./Configs/PrometheusCore/prometheus.yml
+
+  NetworkExporterConfig:
+    name: NetworkExporterConfig-9
+    file: ./Configs/NetworkExporter/network-exporter.yml
+
+  #
+  # Grafana
+  #
+
+  #
+  # Grafana Datasources
+  #
+  GrafanaDatasourcesConfig:
+    name: GrafanaDatasourcesConfig-1
+    file: ./Configs/Grafana/provisioning/datasources/datasource.yml
+
+  #
+  # Grafana Dashboard Config
+  #
+  GrafanaDashboardConfig:
+    name: GrafanaDashboardConfig-1
+    file: ./Configs/Grafana/provisioning/dashboards/dashboard.yml
+
+  #
+  # StarLink WAN Dashboard
+  #
+  GrafanaStarLinkWANDashboardConfig:
+    name: GrafanaStarLinkWANDashboardConfig-2
+    file: ./Configs/Grafana/provisioning/dashboards/StarLink/WAN.json
+
+networks:
+  publicWeb:
+  internalWeb:
+  internalPrometeheus:
+
+volumes:
+  prometheusCore1Data:
+    name: prometheusStarLinkPrometheusCore1Data
+    external: true
+
+  grafanaData:
+    name: prometheusStarLinkGrafanaData
+    external: true
+
+services:
+  Web:
+    image: kristianfoss/programs-caddy:caddy-main-scratch
+    command: ['run', '--config', '/etc/caddy/Caddyfile.json']
+    configs:
+      - source: WebConfig
+        target: /etc/caddy/Caddyfile.json
+        uid: '1000'
+        gid: '1000'
+        mode: 0440
+    deploy:
+      mode: replicated
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    networks:
+      - publicWeb
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+
+  WebInt:
+    image: kristianfoss/programs-caddy:caddy-main-scratch
+    command: ['run', '--config', '/etc/caddy/Caddyfile.json']
+    configs:
+      - source: WebIntConfig
+        target: /etc/caddy/Caddyfile.json
+        uid: '1000'
+        gid: '1000'
+        mode: 0440
+    deploy:
+      mode: replicated
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    networks:
+      - publicWeb
+      - internalWeb
+
+  PrometheusCore:
+    image: kristianfoss/programs-prometheus:prometheus-server-main-scratch
+    command: ['--config.file=/etc/prometheus/prometheus.yml']
+    configs:
+      - source: PrometheusCoreConfig
+        target: /etc/prometheus/prometheus.yml
+        uid: '1000'
+        gid: '1000'
+        mode: 0440
+    deploy:
+      mode: replicated
+      replicas: 1
+    volumes:
+      - prometheusCore1Data:/data
+    networks:
+      - internalWeb
+      - internalPrometeheus
+
+  Grafana:
+    image: grafana/grafana
+    configs:
+      - source: GrafanaDatasourcesConfig
+        target: /etc/grafana/provisioning/datasources/datasource.yml
+        uid: '472'
+        gid: '472'
+        mode: 0440
+      - source: GrafanaDashboardConfig
+        target: /etc/grafana/provisioning/dashboards/dashboard.yml
+        uid: '472'
+        gid: '472'
+        mode: 0440
+      - source: GrafanaStarLinkWANDashboardConfig
+        target: /etc/grafana/provisioning/dashboards/StarLink/WAN.json
+        uid: '472'
+        gid: '472'
+        mode: 0440
+    volumes:
+      - grafanaData:/var/lib/grafana
+    networks:
+      - publicWeb
+      - internalWeb
+      - internalPrometeheus
+
+  NetworkExporter:
+    image: kristianfoss/programs-prometheus-network-exporter:node-exporter-main-scratch
+    command: ['--config.file=/etc/network-exporter/network-exporter.yml']
+    sysctls:
+      net.ipv4.ping_group_range: '0 429496729'
+      net.ipv4.ip_unprivileged_port_start: 0
+    cap_add:
+      - NET_RAW
+      - SYS_PTRACE
+    configs:
+      - source: NetworkExporterConfig
+        target: /etc/network-exporter/network-exporter.yml
+        uid: '1000'
+        gid: '1000'
+        mode: 0440
+    networks:
+      - internalPrometeheus

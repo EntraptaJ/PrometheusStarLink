@@ -1,0 +1,54 @@
+{
+  "admin": {
+    "config": {
+      "persist": false
+    }
+  },
+  "apps": {
+    "http": {
+      "http_port": 8080,
+      "https_port": 8443,
+      "servers": {
+        "srv0": {
+          "listen": [":8080"],
+          "routes": [
+            {
+              "match": [
+                {
+                  "host": ["prometheus.int.example.com"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [
+                    {
+                      "dial": "PrometheusCore:9090"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "match": [
+                {
+                  "host": ["grafana.int.example.com"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [
+                    {
+                      "dial": "Grafana:3000"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
